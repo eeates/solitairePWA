@@ -410,6 +410,7 @@ function recycleWaste() {
 }
 
 function prepareAutoMove(cardEl, card, sourceId) {
+    if (isAnimationRunning || isGameWon || autoCompleting) return;
     let sourcePile = getPileArrayById(sourceId);
     let cardIndex = sourcePile.findIndex(c => c.id === card.id);
     if (cardIndex === -1 || !validateSubGroupSequence(sourceId, cardIndex)) return;
