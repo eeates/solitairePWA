@@ -852,6 +852,86 @@ document.getElementById('btn-mute').addEventListener('click', () => {
     isMuted = !isMuted; document.getElementById('btn-mute').innerText = isMuted ? '🔇' : '🔊';
 });
 
+// Modals & Settings
+document.getElementById('btn-settings').addEventListener('click', () => { document.getElementById('settings-modal').style.display = 'flex'; });
+document.getElementById('btn-close-settings').addEventListener('click', () => {
+    let changed = false;
+    if(appSettings.drawMode != document.getElementById('sel-draw-mode').value || appSettings.scoring !== document.getElementById('sel-scoring').value) {
+        changed = true;
+    }
+    appSettings.drawMode = parseInt(document.getElementById('sel-draw-mode').value);
+    appSettings.scoring = document.getElementById('sel-scoring').value;
+    appSettings.theme = document.getElementById('sel-theme').value;
+    appSettings.cardBack = document.getElementById('sel-card-back').value;
+    localStorage.setItem('solitaireSettings', JSON.stringify(appSettings));
+    applySettings();
+    document.getElementById('settings-modal').style.display = 'none';
+    if(changed && movesCount === 0) { initGame(); }
+    else if(changed) { if(confirm("Oyun kuralları değişti. Yeni oyun başlasın mı?")) initGame(); }
+    render();
+});
+
+document.getElementById('btn-show-stats').addEventListener('click', () => {
+    document.getElementById('settings-modal').style.display = 'none';
+    document.getElementById('stat-played').innerText = appStats.played;
+    document.getElementById('stat-won').innerText = appStats.won;
+    document.getElementById('stat-winrate').innerText = appStats.played > 0 ? Math.round((appStats.won / appStats.played) * 100) + '%' : '0%';
+    document.getElementById('stat-time').innerText = appStats.bestTime ? formatTime(appStats.bestTime) : '-';
+    document.getElementById('stat-moves').innerText = appStats.leastMoves || '-';
+    document.getElementById('stat-score').innerText = appStats.bestScore !== null ? appStats.bestScore : '-';
+    document.getElementById('stats-modal').style.display = 'flex';
+});
+document.getElementById('btn-close-stats').addEventListener('click', () => { document.getElementById('stats-modal').style.display = 'none'; });
+document.getElementById('btn-reset-stats').addEventListener('click', () => {
+    if(confirm("İstatistikleri sıfırlamak istiyor musunuz?")) {
+        appStats = { played: 0, won: 0, bestTime: null, leastMoves: null, bestScore: null };
+        localStorage.setItem('solitaireStats', JSON.stringify(appStats));
+        document.getElementById('btn-close-stats').click();
+    }
+});
+
+// JOKER LOGIC
+document.getElementById('btn-joker').addEventListener('click', () => {
+    if(jokerUsed || isGameWon || isAnimationRunning) return;
+    checkStartTimer();
+    
+    // Joker: Find a facedown card in the tableau that blocks us, and magically flip it and move to waste
+    let targetPile = null;
+    let targetCard = null;
+    let maxHidden = -1;
+    
+    for(let i=0; i<7; i++) {
+        let pile = gameState.tableaus[i];
+        let hiddenCount = 0;
+        for(let c of pile) if(!c.isFaceUp) hiddenCount++;
+        
+        if(hiddenCount > maxHidden && hiddenCount > 0) {
+            maxHidden = hiddenCount;
+            targetPile = pile;
+        }
+    }
+    
+    if(targetPile) {
+        // Find the lowest facedown card
+        let lowestFaceDownIndex = 0;
+        targetCard = targetPile[lowestFaceDownIndex];
+        
+        // Remove it from the tableau
+        targetPile.splice(lowestFaceDownIndex, 1);
+        targetCard.isFaceUp = true;
+        gameState.waste.push(targetCard); // send to top of waste
+        
+        jokerUsed = true;
+        document.getElementById('btn-joker').classList.add('disabled');
+        document.getElementById('joker-count').innerText = '(0)';
+        movesCount++; updateScore(); render();
+        
+        showOverlay("Sihirli Joker!", targetCard.suit + " " + targetCard.val + " kartı sahadan sihirle çıkarılıp elinize eklendi!");
+    } else {
+        alert("Kullanılacak kapalı kart kalmadı!");
+    }
+});
+
 initGame();
 </script>
 </body>
