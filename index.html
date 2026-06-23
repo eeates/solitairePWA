@@ -237,7 +237,10 @@ function initGame() {
             rawDeck.push({ id: Math.random().toString(36).substr(2, 9), val, suit: suit.s, color: suit.c, rank: index + 1, isFaceUp: false });
         });
     });
-    rawDeck.sort(() => Math.random() - 0.5);
+    for (let i = rawDeck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [rawDeck[i], rawDeck[j]] = [rawDeck[j], rawDeck[i]];
+    }
     gameState = { deck: [], waste: [], foundations: [[], [], [], []], tableaus: [[], [], [], [], [], [], []] };
     for (let i = 0; i < 7; i++) {
         for (let j = i; j < 7; j++) {
@@ -321,7 +324,10 @@ function setupDragAndDrop(cardEl, card, index, sourceId) {
         const pileEl = document.getElementById(sourceId);
         draggedEls = Array.from(pileEl.children).slice(index);
         initialRects = draggedEls.map(el => el.getBoundingClientRect());
-        draggedEls.forEach(el => { el.style.zIndex = '5000'; el.style.transition = 'none'; });
+        draggedEls.forEach(el => {
+            if (el.dataset.snapTimeout) { clearTimeout(el.dataset.snapTimeout); delete el.dataset.snapTimeout; }
+            el.style.zIndex = '5000'; el.style.transition = 'none';
+        });
         cardEl.setPointerCapture(e.pointerId);
     });
     cardEl.addEventListener('pointermove', (e) => {
@@ -344,7 +350,8 @@ function setupDragAndDrop(cardEl, card, index, sourceId) {
             draggedEls.forEach((el, idx) => {
                 el.style.transition = 'all 0.15s ease-out'; el.style.left = '0px';
                 el.style.top = sourceId.startsWith('t-') ? `${(index + idx) * (window.innerWidth > 500 ? 25 : 18)}px` : '0px';
-                setTimeout(() => { el.style.zIndex = ''; el.style.transition = ''; }, 150);
+                if (el.dataset.snapTimeout) clearTimeout(el.dataset.snapTimeout);
+                el.dataset.snapTimeout = setTimeout(() => { el.style.zIndex = ''; el.style.transition = ''; delete el.dataset.snapTimeout; }, 150);
             });
         }
     });
@@ -498,6 +505,10 @@ function triggerAutoComplete() {
 
 function autoCompleteTick() {
     if (!autoCompleting) return;
+    if (isAnimationRunning) {
+        setTimeout(autoCompleteTick, 50);
+        return;
+    }
 
     // Her döngüde Tableau'lardaki en alttaki (en uçtaki) kartları kontrol et
     for (let i = 0; i < 7; i++) {
@@ -535,8 +546,14 @@ function autoCompleteTick() {
 function checkNoMovesLeft() {
     if (gameState.deck.length > 0) return;
     if (gameState.waste.length > 0) {
-        let card = gameState.waste[gameState.waste.length - 1];
-        if (canMoveToFoundation(card) || canMoveToTableau(card)) return;
+        let hasMoveInWaste = false;
+        for (let card of gameState.waste) {
+            if (canMoveToFoundation(card) || canMoveToTableau(card)) {
+                hasMoveInWaste = true;
+                break;
+            }
+        }
+        if (hasMoveInWaste) return;
     }
     for (let i = 0; i < 7; i++) {
         let pile = gameState.tableaus[i];
