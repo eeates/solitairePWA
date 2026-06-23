@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Solitaire PWA</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1b5e20">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        :root {
+            --card-width: calc((100vw - 40px) / 7);
+            --card-height: calc(var(--card-width) * 1.45);
+            --green: #1b5e20;
+        }
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; margin: 0; padding: 0; }
+        body {
+            background-color: var(--green);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+            color: white;
+            font-weight: bold;
+            z-index: 100;
+        }
+        button {
+            background: #ffffff22;
+            border: 1px solid #ffffff44;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        button:active { background: #ffffff44; }
+        #game-board {
+            flex: 1;
+            padding: 10px 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+        }
+        .row { display: flex; justify-content: space-between; width: 100%; position: relative; }
+        .zone {
+            width: var(--card-width);
+            height: var(--card-height);
+            border: 2px dashed rgba(255,255,255,0.2);
+            border-radius: 6px;
+            position: relative;
+            background: rgba(0,0,0,0.1);
+        }
+        .card {
+            width: var(--card-width);
+            height: var(--card-height);
+            background: white;
+            border-radius: 6px;
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            cursor: pointer;
+            left: 0;
+            top: 0;
+            transform-origin: top left;
+        }
+        .card.back {
+            background: linear-gradient(135deg, #1565c0 25%, #0d47a1 100%);
+            border: 2px solid white;
+        }
+        .card.back * { display: none; }
+        .card.red { color: #d32f2f; }
+        .card.black { color: #212121; }
+        .card-suit { font-size: 1.4rem; text-align: center; align-self: center; }
+        .card-value { font-size: 1rem; font-weight: bold; line-height: 1; }
+        
+        /* Draggable group styles */
+        .dragging {
+            opacity: 0.5 !important;
+        }
+        .flying-card {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999 !important;
+            transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <button id="btn-new">Yeni Oyun</button>
+        <div id="score">Hamle: 0</div>
+        <button id="btn-undo">Geri Al</button>
+    </header>
+
+    <div id="game-board">
+        <!-- Üst Alan -->
+        <div class="row">
+            <div style="display: flex; gap: 5px;">
+                <div id="deck" class="zone"></div>
+                <div id="waste" class="zone"></div>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <div id="f-0" class="zone foundation" data-suit="♥"></div>
+                <div id="f-1" class="zone foundation" data-suit="♦"></div>
+                <div id="f-2" class="zone foundation" data-suit="♣"></div>
+                <div id="f-3" class="zone foundation" data-suit="♠"></div>
+            </div>
+        </div>
+
+        <!-- Çalışma Alanları (Tableau) -->
+        <div class="row" style="flex: 1;">
+            <div id="t-0" class="zone tableau-pile"></div>
+            <div id="t-1" class="zone tableau-pile"></div>
+            <div id="t-2" class="zone tableau-pile"></div>
+            <div id="t-3" class="zone tableau-pile"></div>
+            <div id="t-4" class="zone tableau-pile"></div>
+            <div id="t-5" class="zone tableau-pile"></div>
+            <div id="t-6" class="zone tableau-pile"></div>
+        </div>
+    </div>
+
+<script>
+const SUITS = [{s:'♥', c:'red'}, {s:'♦', c:'red'}, {s:'♣', c:'black'}, {s:'♠', c:'black'}];
+const VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+let gameState = { deck: [], waste: [], foundations: [[], [], [], []], tableaus: [[], [], [], [], [], [], []] };
+let history = [];
+let movesCount = 0;
+
+// Sürükleme Takibi
+let dragData = null;
+
+function initGame() {
+    movesCount = 0;
+    history = [];
+    updateScore();
+    
+    let rawDeck = [];
+    SUITS.forEach(suit => {
+        VALUES.forEach((val, index) => {
+            rawDeck.push({ id: Math.random().toString(36).substr(2, 9), val, suit: suit.s, color: suit.c, rank: index + 1, isFaceUp: false });
+        });
+    });
+    rawDeck.sort(() => Math.random() - 0.5);
+
+    gameState = { deck: [], waste: [], foundations: [[], [], [], []], tableaus: [[], [], [], [], [], [], []] };
+
+    for (let i = 0; i < 7; i++) {
+        for (let j = i; j < 7; j++) {
+            let card = rawDeck.pop();
+            if (j === i) card.isFaceUp = true;
+            gameState.tableaus[j].push(card);
+        }
+    }
+    gameState.deck = rawDeck;
+    render();
+}
+
+function saveState() {
+    history.push(JSON.stringify({ gameState, movesCount }));
+}
+
+function undo() {
+    if (history.length === 0) return;
+    const previous = JSON.parse(history.pop());
+    gameState = previous.gameState;
+    movesCount = previous.movesCount;
+    render();
+    updateScore();
+}
+
+function render() {
+    // Deck render
+    const deckEl = document.getElementById('deck');
+    deckEl.innerHTML = '';
+    if (gameState.deck.length > 0) {
+        let cEl = createCardEl({isFaceUp: false});
+        cEl.addEventListener('click', drawCard);
+        deckEl.appendChild(cEl);
+    } else {
+        deckEl.addEventListener('click', recycleWaste, {once: true});
+    }
+
+    // Yığınları render et
+    renderPile(document.getElementById('waste'), gameState.waste, false);
+    for (let i = 0; i < 4; i++) {
+        renderPile(document.getElementById(`f-${i}`), gameState.foundations[i], false);
+    }
+    for (let i = 0; i < 7; i++) {
+        renderPile(document.getElementById(`t-${i}`), gameState.tableaus[i], true);
+    }
+}
+
+function createCardEl(card) {
+    const el = document.createElement('div');
+    if (!card.isFaceUp) {
+        el.className = 'card back';
+        return el;
+    }
+    el.className = `card ${card.color}`;
+    el.dataset.id = card.id;
+    el.draggable = true;
+    el.innerHTML = `<div class="card-value">${card.val}</div><div class="card-suit">${card.suit}</div><div class="card-value" style="transform:rotate(180deg)">${card.val}</div>`;
+    return el;
+}
+
+function renderPile(pileEl, cardArray, isTableau) {
+    pileEl.innerHTML = '';
+    
+    if (!isTableau && pileEl.classList.contains('foundation') && cardArray.length === 0) {
+        pileEl.innerHTML = `<div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:rgba(255,255,255,0.15); font-size:1.5rem; font-weight:bold;">${pileEl.dataset.suit}</div>`;
+    }
+
+    cardArray.forEach((card, index) => {
+        let cEl = createCardEl(card);
+        if (isTableau) {
+            // Görseldeki üst üste binme hatasını çözen dinamik piksel aralığı
+            cEl.style.top = `${index * (window.innerWidth > 500 ? 25 : 18)}px`;
+        }
+        
+        // Çift Tıklama / Dokunma
+        cEl.addEventListener('dblclick', (e) => { e.stopPropagation(); prepareAutoMove(cEl, card, pileEl.id); });
+        let lastTap = 0;
+        cEl.addEventListener('touchend', (e) => {
+            let currentTime = new Date().getTime();
+            let tapLength = currentTime - lastTap;
+            if (tapLength < 300 && tapLength > 0) {
+                e.preventDefault();
+                prepareAutoMove(cEl, card, pileEl.id);
+            }
+            lastTap = currentTime;
+        });
+
+        // HTML5 Sürükle-Bırak Olayları (Grup sürükleme destekli)
+        if (card.isFaceUp) {
+            cEl.addEventListener('dragstart', (e) => {
+                e.stopPropagation();
+                dragData = { card, index, sourceId: pileEl.id };
+                
+                // Sürüklenen kart ve altındaki tüm kartları görsel olarak soluklaştır
+                if (isTableau) {
+                    const siblings = Array.from(pileEl.children).slice(index);
+                    siblings.forEach(el => el.classList.add('dragging'));
+                } else {
+                    cEl.classList.add('dragging');
+                }
+            });
+
+            cEl.addEventListener('dragend', () => {
+                dragData = null;
+                render();
+            });
+        }
+
+        pileEl.appendChild(cEl);
+    });
+
+    pileEl.addEventListener('dragover', e => e.preventDefault());
+    pileEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!dragData) return;
+        handleDrop(dragData, pileEl.id);
+    });
+}
+
+function drawCard() {
+    saveState();
+    let card = gameState.deck.pop();
+    card.isFaceUp = true;
+    gameState.waste.push(card);
+    movesCount++;
+    updateScore();
+    render();
+}
+
+function recycleWaste() {
+    if (gameState.waste.length === 0) return;
+    saveState();
+    gameState.deck = [...gameState.waste].reverse().map(c => ({...c, isFaceUp: false}));
+    gameState.waste = [];
+    movesCount++;
+    updateScore();
+    render();
+}
+
+function prepareAutoMove(cardEl, card, sourceId) {
+    let targetId = null;
+    let countToMove = 1;
+
+    // Önce Foundation kontrolü
+    for (let i = 0; i < 4; i++) {
+        let fPile = gameState.foundations[i];
+        if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(i) === card.suit) ||
+            (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)) {
+            targetId = `f-${i}`;
+            break;
+        }
+    }
+
+    // Sonra Tableau kontrolü
+    if (!targetId) {
+        let sourcePile = getPileArrayById(sourceId);
+        let cardIndex = sourcePile.findIndex(c => c.id === card.id);
+        countToMove = sourcePile.length - cardIndex;
+
+        for (let i = 0; i < 7; i++) {
+            let tPile = gameState.tableaus[i];
+            if (tPile.length === 0 && card.rank === 13) {
+                targetId = `t-${i}`;
+                break;
+            }
+            if (tPile.length > 0) {
+                let targetCard = tPile[tPile.length - 1];
+                if (targetCard.color !== card.color && targetCard.rank === card.rank + 1) {
+                    targetId = `t-${i}`;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (targetId) {
+        animateCardFly(cardEl, sourceId, targetId, countToMove);
+    }
+}
+
+function animateCardFly(cardEl, sourceId, targetId, countToMove) {
+    const sourceRect = cardEl.getBoundingClientRect();
+    const targetEl = document.getElementById(targetId);
+    const targetRect = targetEl.getBoundingClientRect();
+    
+    let targetTop = targetRect.top;
+    let targetLeft = targetRect.left;
+    if (targetId.startsWith('t-')) {
+        const targetPileCount = gameState.tableaus[parseInt(targetId.split('-')[1])].length;
+        targetTop += targetPileCount * (window.innerWidth > 500 ? 25 : 18);
+    }
+
+    // Klon kart oluşturup yumuşakça kaydır
+    const clone = cardEl.cloneNode(true);
+    clone.className = 'card flying-card';
+    if (cardEl.classList.contains('red')) clone.classList.add('red');
+    if (cardEl.classList.contains('black')) clone.classList.add('black');
+    
+    clone.style.top = '0px';
+    clone.style.left = '0px';
+    clone.style.transform = `translate(${sourceRect.left}px, ${sourceRect.top}px)`;
+    document.body.appendChild(clone);
+
+    cardEl.style.opacity = '0';
+
+    // Bir sonraki frame'de animasyonu tetikle
+    requestAnimationFrame(() => {
+        clone.style.transform = `translate(${targetLeft}px, ${targetTop}px)`;
+    });
+
+    clone.addEventListener('transitionend', () => {
+        clone.remove();
+        executeMove(sourceId, targetId, countToMove);
+    }, { once: true });
+}
+
+function handleDrop(data, targetId) {
+    let { card, index, sourceId } = data;
+    if (sourceId === targetId) return;
+
+    let sourcePile = getPileArrayById(sourceId);
+    let countToMove = sourcePile.length - index;
+    let isValid = false;
+
+    if (targetId.startsWith('f-')) {
+        let fIndex = parseInt(targetId.split('-')[1]);
+        let fPile = gameState.foundations[fIndex];
+        if (countToMove === 1 && ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(fIndex) === card.suit) || 
+            (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1))) {
+            isValid = true;
+        }
+    } else if (targetId.startsWith('t-')) {
+        let tIndex = parseInt(targetId.split('-')[1]);
+        let tPile = gameState.tableaus[tIndex];
+        if (tPile.length === 0 && card.rank === 13) {
+            isValid = true;
+        } else if (tPile.length > 0) {
+            let targetCard = tPile[tPile.length - 1];
+            if (targetCard.color !== card.color && targetCard.rank === card.rank + 1) {
+                isValid = true;
+            }
+        }
+    }
+
+    if (isValid) {
+        executeMove(sourceId, targetId, countToMove);
+    } else {
+        render();
+    }
+}
+
+function executeMove(sourceId, targetId, count) {
+    saveState();
+    let sourcePile = getPileArrayById(sourceId);
+    let targetPile = getPileArrayById(targetId);
+
+    let movedCards = sourcePile.splice(sourcePile.length - count, count);
+    targetPile.push(...movedCards);
+
+    if (sourcePile.length > 0 && !sourcePile[sourcePile.length - 1].isFaceUp) {
+        sourcePile[sourcePile.length - 1].isFaceUp = true;
+    }
+
+    movesCount++;
+    updateScore();
+    render();
+    checkWin();
+}
+
+function getPileArrayById(id) {
+    if (id === 'waste') return gameState.waste;
+    if (id.startsWith('f-')) return gameState.foundations[parseInt(id.split('-')[1])];
+    if (id.startsWith('t-')) return gameState.tableaus[parseInt(id.split('-')[1])];
+}
+
+function getFoundationSuit(index) { return ['♥', '♦', '♣', '♠'][index]; }
+function updateScore() { document.getElementById('score').innerText = `Hamle: ${movesCount}`; }
+function checkWin() {
+    if (gameState.foundations.every(f => f.length === 13)) {
+        alert('Tebrikler, kazandınız!');
+    }
+}
+
+document.getElementById('btn-new').addEventListener('click', initGame);
+document.getElementById('btn-undo').addEventListener('click', undo);
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+}
+
+initGame();
+</script>
+</body>
+</html>

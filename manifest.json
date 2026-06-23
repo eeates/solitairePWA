@@ -1,0 +1,16 @@
+{
+  "name": "Solitaire Pure",
+  "short_name": "Solitaire",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#1b5e20",
+  "theme_color": "#1b5e20",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/5115/5115594.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
