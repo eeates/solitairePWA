@@ -50,6 +50,20 @@
         button:active { background: #ffffff44; }
         #btn-mute { font-size: 16px; min-width: 40px; }
         
+        /* Otomatik Tamamlama Butonu Özel Efekti */
+        #btn-autocomplete {
+            background: #1565c0;
+            border: 1px solid #1e88e5;
+            font-weight: bold;
+            display: none;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(21, 101, 192, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(21, 101, 192, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(21, 101, 192, 0); }
+        }
+
         #game-board {
             flex: 1;
             padding: 10px 5px;
@@ -101,7 +115,6 @@
             transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
         }
 
-        /* Mesaj Paneli */
         #msg-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -118,7 +131,6 @@
         #msg-overlay h2 { font-size: 2rem; margin-bottom: 10px; }
         #msg-overlay p { font-size: 1.2rem; margin-bottom: 20px; opacity: 0.9; }
 
-        /* Kazanma Animasyonu Canvas */
         #win-canvas {
             position: fixed;
             top: 0; left: 0;
@@ -135,6 +147,7 @@
         <div class="btn-group">
             <button id="btn-new">Yeni Oyun</button>
             <button id="btn-mute">🔊</button>
+            <button id="btn-autocomplete">Bitir ✨</button>
         </div>
         <div id="score">Hamle: 0</div>
         <button id="btn-undo">Geri Al</button>
@@ -186,8 +199,8 @@ let movesCount = 0;
 let isAnimationRunning = false;
 let isMuted = false;
 let isGameWon = false;
+let autoCompleting = false; // Otomatik tamamlama sürecinde miyiz?
 
-// SES MOTORU
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 function playCardSound(type) {
     if (isMuted) return;
@@ -208,10 +221,11 @@ function playCardSound(type) {
     }
 }
 
-// OYUN BAŞLATMA
 function initGame() {
     isGameWon = false;
+    autoCompleting = false;
     document.getElementById('win-canvas').style.display = 'none';
+    document.getElementById('btn-autocomplete').style.display = 'none';
     hideOverlay();
     movesCount = 0; history = []; isAnimationRunning = false;
     updateScore();
@@ -236,10 +250,10 @@ function initGame() {
     render();
 }
 
-function saveState() { history.push(JSON.stringify({ gameState, movesCount })); }
+function saveState() { if(!autoCompleting) history.push(JSON.stringify({ gameState, movesCount })); }
 
 function undo() {
-    if (history.length === 0 || isAnimationRunning || isGameWon) return;
+    if (history.length === 0 || isAnimationRunning || isGameWon || autoCompleting) return;
     const previous = JSON.parse(history.pop());
     gameState = previous.gameState; movesCount = previous.movesCount;
     playCardSound('flip'); render(); updateScore();
@@ -259,7 +273,10 @@ function render() {
     for (let i = 0; i < 4; i++) renderPile(document.getElementById(`f-${i}`), gameState.foundations[i], false);
     for (let i = 0; i < 7; i++) renderPile(document.getElementById(`t-${i}`), gameState.tableaus[i], true);
     
-    if (!isGameWon) checkNoMovesLeft();
+    if (!isGameWon && !autoCompleting) {
+        checkAutoCompleteAvailability();
+        checkNoMovesLeft();
+    }
 }
 
 function createCardEl(card) {
@@ -280,23 +297,23 @@ function renderPile(pileEl, cardArray, isTableau) {
         if (isTableau) cEl.style.top = `${index * (window.innerWidth > 500 ? 25 : 18)}px`;
         let lastTap = 0;
         cEl.addEventListener('touchend', (e) => {
+            if (autoCompleting) return;
             let currentTime = new Date().getTime();
             if (currentTime - lastTap < 250 && currentTime - lastTap > 0) {
                 e.preventDefault(); prepareAutoMove(cEl, card, pileEl.id);
             }
             lastTap = currentTime;
         });
-        cEl.addEventListener('dblclick', (e) => { e.stopPropagation(); prepareAutoMove(cEl, card, pileEl.id); });
-        if (card.isFaceUp) setupDragAndDrop(cEl, card, index, pileEl.id);
+        cEl.addEventListener('dblclick', (e) => { e.stopPropagation(); if (!autoCompleting) prepareAutoMove(cEl, card, pileEl.id); });
+        if (card.isFaceUp && !autoCompleting) setupDragAndDrop(cEl, card, index, pileEl.id);
         pileEl.appendChild(cEl);
     });
 }
 
-// SÜRÜKLE BIRAK MOTORU
 function setupDragAndDrop(cardEl, card, index, sourceId) {
     let startX = 0, startY = 0, initialRects = [], draggedEls = [], isDragging = false;
     cardEl.addEventListener('pointerdown', (e) => {
-        if (isAnimationRunning || isGameWon) return;
+        if (isAnimationRunning || isGameWon || autoCompleting) return;
         e.stopPropagation(); if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (!validateSubGroupSequence(sourceId, index)) return;
         if (e.pointerType === 'touch') e.preventDefault();
@@ -372,14 +389,14 @@ function handleDropValidation(card, index, sourceId, targetId) {
 }
 
 function drawCard() {
-    if (isAnimationRunning || isGameWon) return;
+    if (isAnimationRunning || isGameWon || autoCompleting) return;
     saveState(); let card = gameState.deck.pop(); card.isFaceUp = true;
     gameState.waste.push(card); movesCount++; updateScore();
     playCardSound('flip'); render();
 }
 
 function recycleWaste() {
-    if (isAnimationRunning || isGameWon || gameState.waste.length === 0) return;
+    if (isAnimationRunning || isGameWon || autoCompleting || gameState.waste.length === 0) return;
     saveState(); gameState.deck = [...gameState.waste].reverse().map(c => ({...c, isFaceUp: false}));
     gameState.waste = []; movesCount++; updateScore();
     playCardSound('shuffle'); render();
@@ -458,37 +475,80 @@ function getFoundationSuit(index) { return ['♥', '♦', '♣', '♠'][index]; 
 function updateScore() { document.getElementById('score').innerText = `Hamle: ${movesCount}`; }
 
 // -------------------------------------------------------------------------
-// AKILLI ANALİZ: HAMLE KALMADI TESPİTİ
+// AKILLI SİSTEMLER: HAMLE BİTTİ VE OTOMATİK TAMAMLAMA KONTROLLERİ
 // -------------------------------------------------------------------------
-function checkNoMovesLeft() {
-    // 1. Destede kart var mı?
-    if (gameState.deck.length > 0) return;
+function checkAutoCompleteAvailability() {
+    // Kriter 1: Deste ve Waste tamamen boşalmış olmalı
+    if (gameState.deck.length > 0 || gameState.waste.length > 0) return;
 
-    // 2. Waste'deki kart bir yere gidebilir mi?
+    // Kriter 2: Sahada (Tableau) tek bir tane bile kapalı kart kalmamış olmalı
+    for (let i = 0; i < 7; i++) {
+        if (gameState.tableaus[i].some(card => !card.isFaceUp)) return;
+    }
+
+    // İki kriter de okeyse butonu göster
+    document.getElementById('btn-autocomplete').style.display = 'flex';
+}
+
+function triggerAutoComplete() {
+    autoCompleting = true;
+    document.getElementById('btn-autocomplete').style.display = 'none';
+    autoCompleteTick();
+}
+
+function autoCompleteTick() {
+    if (!autoCompleting) return;
+
+    // Her döngüde Tableau'lardaki en alttaki (en uçtaki) kartları kontrol et
+    for (let i = 0; i < 7; i++) {
+        let pile = gameState.tableaus[i];
+        if (pile.length === 0) continue;
+
+        let card = pile[pile.length - 1];
+        
+        // Bu kart bir foundation'a gidebiliyor mu?
+        for (let f = 0; f < 4; f++) {
+            let fPile = gameState.foundations[f];
+            if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(f) === card.suit) ||
+                (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)) {
+                
+                // Kartı yuvaya uçur
+                const pileEl = document.getElementById(`t-${i}`);
+                const cardEl = pileEl.lastElementChild;
+                
+                if (cardEl) {
+                    animateCardFly(cardEl, `t-${i}`, `f-${f}`, 1);
+                    // Bir sonraki kartı uçurmak için animasyonun bitmesini (250ms) bekle
+                    setTimeout(autoCompleteTick, 220);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Eğer hiçbir tableau'dan kart taşınamadıysa ve oyun henüz bitmediyse güvence olarak durdur
+    if (!isGameWon) {
+        autoCompleting = false;
+    }
+}
+
+function checkNoMovesLeft() {
+    if (gameState.deck.length > 0) return;
     if (gameState.waste.length > 0) {
         let card = gameState.waste[gameState.waste.length - 1];
         if (canMoveToFoundation(card) || canMoveToTableau(card)) return;
     }
-
-    // 3. Tableau'daki açık kartlar bir yere gidebilir mi?
     for (let i = 0; i < 7; i++) {
         let pile = gameState.tableaus[i];
         if (pile.length === 0) continue;
-        
-        // Bu sütundaki her açık kartı kontrol et (çünkü grup olarak taşınabilirler)
         for (let j = 0; j < pile.length; j++) {
-            let card = pile[j];
-            if (!card.isFaceUp) continue;
-            
-            // Eğer bu kart grubun başıysa ve taşınabiliyorsa hamle vardır
+            let card = pile[j]; if (!card.isFaceUp) continue;
             if (validateSubGroupSequence(`t-${i}`, j)) {
                 if (canMoveToFoundation(card) && j === pile.length - 1) return;
                 if (canMoveToTableau(card, i)) return;
             }
         }
     }
-
-    // Buraya ulaşıldıysa hamle bitmiştir
     showOverlay("Hamle Kalmadı!", "Yapacak hamlen kalmadı. Geri alabilir veya yeni bir oyuna başlayabilirsin.");
 }
 
@@ -505,9 +565,8 @@ function canMoveToTableau(card, excludeIndex = -1) {
     for (let i = 0; i < 7; i++) {
         if (i === excludeIndex) continue;
         let tPile = gameState.tableaus[i];
-        if (tPile.length === 0) {
-            if (card.rank === 13) return true;
-        } else {
+        if (tPile.length === 0) { if (card.rank === 13) return true; } 
+        else {
             let targetCard = tPile[tPile.length - 1];
             if (targetCard.color !== card.color && targetCard.rank === card.rank + 1) return true;
         }
@@ -515,9 +574,7 @@ function canMoveToTableau(card, excludeIndex = -1) {
     return false;
 }
 
-// -------------------------------------------------------------------------
-// KAZANMA ŞÖLENİ: WINDOWS STİLİ CARD CASCADE
-// -------------------------------------------------------------------------
+// KAZANMA ANIMASYONU (CANVAS)
 const winCanvas = document.getElementById('win-canvas');
 const ctx = winCanvas.getContext('2d');
 let particles = [];
@@ -525,105 +582,62 @@ let particles = [];
 function checkWin() {
     if (gameState.foundations.every(f => f.length === 13)) {
         isGameWon = true;
+        autoCompleting = false;
         showOverlay("Tebrikler!", "Tüm kartları yuvaya dizdin! Şahane bir galibiyet.");
         startWinAnimation();
     }
 }
 
 function startWinAnimation() {
-    winCanvas.style.display = 'block';
-    winCanvas.width = window.innerWidth;
-    winCanvas.height = window.innerHeight;
+    winCanvas.style.display = 'block'; winCanvas.width = window.innerWidth; winCanvas.height = window.innerHeight;
     particles = [];
-    
-    // Her foundation'dan birer birer kart fırlatacağız
     let cardQueue = [];
-    for(let f=0; f<4; f++) {
-        for(let r=12; r>=0; r--) {
-            cardQueue.push(gameState.foundations[f][r]);
-        }
-    }
-
+    for(let f=0; f<4; f++) { for(let r=12; r>=0; r--) { cardQueue.push(gameState.foundations[f][r]); } }
     let i = 0;
     const launchInterval = setInterval(() => {
         if (i >= cardQueue.length) { clearInterval(launchInterval); return; }
-        
-        // Kartın başlangıç pozisyonunu bul
-        const fIndex = Math.floor(i / 13);
-        const rect = document.getElementById(`f-${fIndex}`).getBoundingClientRect();
-        
+        const fIndex = Math.floor(i / 13); const rect = document.getElementById(`f-${fIndex}`).getBoundingClientRect();
         particles.push({
-            card: cardQueue[i],
-            x: rect.left,
-            y: rect.top,
-            vx: (Math.random() * 10) - 5,
-            vy: (Math.random() * -10) - 5,
-            gravity: 0.8,
-            bounce: 0.7,
-            img: null // Kart görselini buraya çizeceğiz
+            card: cardQueue[i], x: rect.left, y: rect.top,
+            vx: (Math.random() * 10) - 5, vy: (Math.random() * -10) - 5,
+            gravity: 0.8, bounce: 0.7
         });
         i++;
     }, 150);
-
     animateWin();
 }
 
 function animateWin() {
     if (!isGameWon) return;
-    // Ekranı temizlemiyoruz (Windows efekti için üst üste biniyorlar)
-    // ctx.clearRect(0,0, winCanvas.width, winCanvas.height); 
-
     particles.forEach(p => {
-        // Fizik motoru
-        p.vy += p.gravity;
-        p.x += p.vx;
-        p.y += p.vy;
-
-        // Yere çarpma
-        if (p.y + 100 > winCanvas.height) {
-            p.y = winCanvas.height - 100;
-            p.vy *= -p.bounce;
-        }
-        
-        // Kartı çiz
+        p.vy += p.gravity; p.x += p.vx; p.y += p.vy;
+        if (p.y + 100 > winCanvas.height) { p.y = winCanvas.height - 100; p.vy *= -p.bounce; }
         drawParticle(p);
     });
-
     requestAnimationFrame(animateWin);
 }
 
 function drawParticle(p) {
-    const w = window.innerWidth > 500 ? 100 : 60;
-    const h = w * 1.45;
-    
-    ctx.fillStyle = "white";
-    ctx.beginPath();
-    ctx.roundRect(p.x, p.y, w, h, 5);
-    ctx.fill();
-    ctx.strokeStyle = "#ccc";
-    ctx.stroke();
-
+    const w = window.innerWidth > 500 ? 100 : 60; const h = w * 1.45;
+    ctx.fillStyle = "white"; ctx.beginPath(); ctx.roundRect(p.x, p.y, w, h, 5); ctx.fill();
+    ctx.strokeStyle = "#ccc"; ctx.stroke();
     ctx.fillStyle = p.card.color === 'red' ? '#d32f2f' : '#212121';
-    ctx.font = "bold 14px Arial";
-    ctx.fillText(p.card.val, p.x + 5, p.y + 15);
-    ctx.font = "20px Arial";
-    ctx.fillText(p.card.suit, p.x + w/2 - 10, p.y + h/2 + 5);
+    ctx.font = "bold 14px Arial"; ctx.fillText(p.card.val, p.x + 5, p.y + 15);
+    ctx.font = "20px Arial"; ctx.fillText(p.card.suit, p.x + w/2 - 10, p.y + h/2 + 5);
 }
 
-// MESAJ PANELİ KONTROLLERİ
 function showOverlay(title, text) {
     document.getElementById('msg-title').innerText = title;
     document.getElementById('msg-text').innerText = text;
     document.getElementById('msg-overlay').style.display = 'flex';
 }
-function hideOverlay() {
-    document.getElementById('msg-overlay').style.display = 'none';
-}
+function hideOverlay() { document.getElementById('msg-overlay').style.display = 'none'; }
 
 document.getElementById('btn-msg-close').addEventListener('click', hideOverlay);
 document.getElementById('btn-msg-new').addEventListener('click', initGame);
 document.getElementById('btn-new').addEventListener('click', initGame);
 document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-autocomplete').addEventListener('click', triggerAutoComplete);
 document.getElementById('btn-mute').addEventListener('click', () => {
     isMuted = !isMuted; document.getElementById('btn-mute').innerText = isMuted ? '🔇' : '🔊';
 });
