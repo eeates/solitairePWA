@@ -10,13 +10,15 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <style>
         :root {
+            --bg-color: #1b5e20;
+            --card-back: linear-gradient(135deg, #1565c0 25%, #0d47a1 100%);
             --card-width: calc((100vw - 40px) / 7);
             --card-height: calc(var(--card-width) * 1.45);
             --green: #1b5e20;
         }
         * { box-sizing: border-box; user-select: none; -webkit-user-select: none; margin: 0; padding: 0; }
         body {
-            background-color: var(--green);
+            background-color: var(--bg-color);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             overflow: hidden;
             height: 100vh;
@@ -99,7 +101,7 @@
             touch-action: none;
         }
         .card.back {
-            background: linear-gradient(135deg, #1565c0 25%, #0d47a1 100%);
+            background: var(--card-back);
             border: 2px solid white;
         }
         .card.back * { display: none; }
@@ -139,19 +141,52 @@
             z-index: 9000;
             display: none;
         }
+    
+        .modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none; z-index: 10001;
+            justify-content: center; align-items: center; color: white;
+        }
+        .modal-content {
+            background: #2e2e2e; padding: 20px; border-radius: 10px; width: 90%; max-width: 400px;
+        }
+        .modal h2 { margin-bottom: 15px; text-align: center; }
+        .setting-group { margin-bottom: 15px; }
+        .setting-group label { display: block; margin-bottom: 5px; font-size: 14px; }
+        .setting-group select { width: 100%; padding: 8px; background: #424242; color: white; border: 1px solid #666; border-radius: 4px; }
+        .modal-buttons { display: flex; justify-content: space-between; margin-top: 20px; }
+        
+        .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #444; }
+        .stat-row:last-child { border-bottom: none; }
+        
+        #score-container { display: flex; flex-direction: column; align-items: center; font-size: 14px; }
+        
+        #btn-joker { background: #ab47bc; border: 1px solid #8e24aa; position: relative; }
+        #btn-joker.disabled { opacity: 0.5; pointer-events: none; }
+
     </style>
 </head>
 <body>
 
+    
     <header>
         <div class="btn-group">
             <button id="btn-new">Yeni Oyun</button>
             <button id="btn-mute">🔊</button>
+            <button id="btn-settings">⚙️</button>
+            <button id="btn-joker">🃏 Joker <span id="joker-count">(1)</span></button>
             <button id="btn-autocomplete">Bitir ✨</button>
         </div>
-        <div id="score">Hamle: 0</div>
+        <div id="score-container">
+            <div id="score">Skor: 0</div>
+            <div style="display:flex; gap:10px; font-size:12px; opacity:0.8;">
+                <span id="moves">Hamle: 0</span>
+                <span id="timer">00:00</span>
+            </div>
+        </div>
         <button id="btn-undo">Geri Al</button>
     </header>
+
 
     <div id="game-board">
         <div class="row">
@@ -189,6 +224,65 @@
 
     <canvas id="win-canvas"></canvas>
 
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <h2>Ayarlar</h2>
+            <div class="setting-group">
+                <label>Kart Çekme:</label>
+                <select id="sel-draw-mode">
+                    <option value="1">1 Kart</option>
+                    <option value="3">3 Kart</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <label>Puanlama:</label>
+                <select id="sel-scoring">
+                    <option value="standard">Standart</option>
+                    <option value="vegas">Vegas</option>
+                    <option value="none">Yok</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <label>Arka Plan Rengi:</label>
+                <select id="sel-theme">
+                    <option value="#1b5e20">Klasik Yeşil</option>
+                    <option value="#0d47a1">Gece Mavisi</option>
+                    <option value="#b71c1c">Bordo</option>
+                    <option value="#212121">Kömür Siyahı</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <label>Kart Arkası:</label>
+                <select id="sel-card-back">
+                    <option value="linear-gradient(135deg, #1565c0 25%, #0d47a1 100%)">Klasik Mavi</option>
+                    <option value="linear-gradient(135deg, #c62828 25%, #b71c1c 100%)">Kırmızı</option>
+                    <option value="repeating-linear-gradient(45deg, #212121, #212121 10px, #424242 10px, #424242 20px)">Siyah Çizgili</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button id="btn-show-stats" style="background:#1565c0">İstatistikler</button>
+                <button id="btn-close-settings">Kaydet & Kapat</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="stats-modal" class="modal">
+        <div class="modal-content">
+            <h2>İstatistikler</h2>
+            <div class="stat-row"><span>Oynanan Oyun:</span> <span id="stat-played">0</span></div>
+            <div class="stat-row"><span>Kazanılan:</span> <span id="stat-won">0</span></div>
+            <div class="stat-row"><span>Kazanma Oranı:</span> <span id="stat-winrate">0%</span></div>
+            <div class="stat-row"><span>En İyi Süre:</span> <span id="stat-time">-</span></div>
+            <div class="stat-row"><span>En Az Hamle:</span> <span id="stat-moves">-</span></div>
+            <div class="stat-row"><span>En Yüksek Skor:</span> <span id="stat-score">-</span></div>
+            <div class="modal-buttons">
+                <button id="btn-reset-stats" style="background:#d32f2f">Sıfırla</button>
+                <button id="btn-close-stats">Kapat</button>
+            </div>
+        </div>
+    </div>
+
+
 <script>
 const SUITS = [{s:'♥', c:'red'}, {s:'♦', c:'red'}, {s:'♣', c:'black'}, {s:'♠', c:'black'}];
 const VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -199,7 +293,32 @@ let movesCount = 0;
 let isAnimationRunning = false;
 let isMuted = false;
 let isGameWon = false;
-let autoCompleting = false; // Otomatik tamamlama sürecinde miyiz?
+let autoCompleting = false;
+let score = 0;
+let timeSeconds = 0;
+let timerInterval = null;
+let jokerUsed = false;
+let gameStarted = false;
+
+// Settings
+let appSettings = JSON.parse(localStorage.getItem('solitaireSettings')) || {
+    drawMode: 1, scoring: 'standard', theme: '#1b5e20', cardBack: 'linear-gradient(135deg, #1565c0 25%, #0d47a1 100%)'
+};
+// Stats
+let appStats = JSON.parse(localStorage.getItem('solitaireStats')) || {
+    played: 0, won: 0, bestTime: null, leastMoves: null, bestScore: null
+};
+
+function applySettings() {
+    document.documentElement.style.setProperty('--bg-color', appSettings.theme);
+    document.documentElement.style.setProperty('--card-back', appSettings.cardBack);
+    document.getElementById('sel-draw-mode').value = appSettings.drawMode;
+    document.getElementById('sel-scoring').value = appSettings.scoring;
+    document.getElementById('sel-theme').value = appSettings.theme;
+    document.getElementById('sel-card-back').value = appSettings.cardBack;
+}
+applySettings();
+ // Otomatik tamamlama sürecinde miyiz?
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 function playCardSound(type) {
@@ -228,6 +347,16 @@ function initGame() {
     document.getElementById('btn-autocomplete').style.display = 'none';
     hideOverlay();
     movesCount = 0; history = []; isAnimationRunning = false;
+    
+    if(gameStarted && !isGameWon) saveStats(false); // If giving up previous game
+    timeSeconds = 0; gameStarted = false; clearInterval(timerInterval); jokerUsed = false;
+    document.getElementById('timer').innerText = '00:00';
+    document.getElementById('btn-joker').classList.remove('disabled');
+    document.getElementById('joker-count').innerText = '(1)';
+    
+    if(appSettings.scoring === 'vegas') score = -52;
+    else score = 0;
+    
     updateScore();
     playCardSound('shuffle');
     
@@ -297,7 +426,18 @@ function renderPile(pileEl, cardArray, isTableau) {
     }
     cardArray.forEach((card, index) => {
         let cEl = createCardEl(card);
-        if (isTableau) cEl.style.top = `${index * (window.innerWidth > 500 ? 25 : 18)}px`;
+        
+        if (isTableau) {
+            cEl.style.top = `${index * (window.innerWidth > 500 ? 25 : 18)}px`;
+        } else if (pileEl.id === 'waste' && appSettings.drawMode == 3) {
+            // Sadece en üstteki 3 kartı sağa kaydır
+            let offsetIndex = Math.max(0, index - (cardArray.length - 3));
+            if (index >= cardArray.length - 3) {
+                cEl.style.left = `${offsetIndex * 15}px`;
+            } else {
+                cEl.style.left = '0px';
+            }
+        }
         let lastTap = 0;
         cEl.addEventListener('touchend', (e) => {
             if (autoCompleting) return;
@@ -308,7 +448,13 @@ function renderPile(pileEl, cardArray, isTableau) {
             lastTap = currentTime;
         });
         cEl.addEventListener('dblclick', (e) => { e.stopPropagation(); if (!autoCompleting) prepareAutoMove(cEl, card, pileEl.id); });
-        if (card.isFaceUp && !autoCompleting) setupDragAndDrop(cEl, card, index, pileEl.id);
+        
+        if (card.isFaceUp && !autoCompleting) {
+            if(pileEl.id !== 'waste' || index === cardArray.length - 1) {
+                setupDragAndDrop(cEl, card, index, pileEl.id);
+            }
+        }
+
         pileEl.appendChild(cEl);
     });
 }
@@ -398,14 +544,14 @@ function handleDropValidation(card, index, sourceId, targetId) {
 function drawCard() {
     if (isAnimationRunning || isGameWon || autoCompleting) return;
     saveState(); let card = gameState.deck.pop(); card.isFaceUp = true;
-    gameState.waste.push(card); movesCount++; updateScore();
+    gameState.waste.push(card); movesCount++; checkStartTimer(); updateScore();
     playCardSound('flip'); render();
 }
 
 function recycleWaste() {
     if (isAnimationRunning || isGameWon || autoCompleting || gameState.waste.length === 0) return;
     saveState(); gameState.deck = [...gameState.waste].reverse().map(c => ({...c, isFaceUp: false}));
-    gameState.waste = []; movesCount++; updateScore();
+    gameState.waste = []; movesCount++; checkStartTimer(); updateScore();
     playCardSound('shuffle'); render();
 }
 
@@ -468,10 +614,16 @@ function executeMove(sourceId, targetId, count) {
     let sourcePile = getPileArrayById(sourceId); let targetPile = getPileArrayById(targetId);
     let movedCards = sourcePile.splice(sourcePile.length - count, count);
     targetPile.push(...movedCards);
-    if (sourcePile.length > 0 && !sourcePile[sourcePile.length - 1].isFaceUp) {
-        sourcePile[sourcePile.length - 1].isFaceUp = true;
+    if(targetId.startsWith('f-')) {
+        addScore(appSettings.scoring === 'vegas' ? 5 : 10);
+    } else if (targetId.startsWith('t-') && (sourceId === 'waste' || sourceId === 'deck')) {
+        addScore(5);
     }
-    movesCount++; updateScore(); render(); checkWin();
+    
+    if (sourcePile.length > 0 && !sourcePile[sourcePile.length - 1].isFaceUp) {
+        sourcePile[sourcePile.length - 1].isFaceUp = true; addScore(5);
+    }
+    movesCount++; checkStartTimer(); updateScore(); render(); checkWin();
 }
 
 function getPileArrayById(id) {
@@ -479,6 +631,229 @@ function getPileArrayById(id) {
     if (id.startsWith('f-')) return gameState.foundations[parseInt(id.split('-')[1])];
     if (id.startsWith('t-')) return gameState.tableaus[parseInt(id.split('-')[1])];
 }
+
+function formatTime(sec) {
+    let m = Math.floor(sec / 60); let s = sec % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+function startTimer() {
+    if(timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        if(!isGameWon && gameStarted) {
+            timeSeconds++;
+            document.getElementById('timer').innerText = formatTime(timeSeconds);
+            if(appSettings.scoring === 'standard' && timeSeconds % 10 === 0 && score > 0) {
+                addScore(-2); // Standart modda her 10 sn'de 2 puan düşer
+            }
+        }
+    }, 1000);
+}
+function addScore(points) {
+    if(appSettings.scoring === 'none') return;
+    score += points;
+    if(score < 0 && appSettings.scoring === 'standard') score = 0;
+    document.getElementById('score').innerText = (appSettings.scoring === 'vegas' ? '
+function updateScore() { 
+    document.getElementById('moves').innerText = 'Hamle: ' + movesCount; 
+    document.getElementById('score').innerText = (appSettings.scoring === 'vegas' ? '
+
+// -------------------------------------------------------------------------
+// AKILLI SİSTEMLER: HAMLE BİTTİ VE OTOMATİK TAMAMLAMA KONTROLLERİ
+// -------------------------------------------------------------------------
+function checkAutoCompleteAvailability() {
+    // Kriter 1: Deste ve Waste tamamen boşalmış olmalı
+    if (gameState.deck.length > 0 || gameState.waste.length > 0) return;
+
+    // Kriter 2: Sahada (Tableau) tek bir tane bile kapalı kart kalmamış olmalı
+    for (let i = 0; i < 7; i++) {
+        if (gameState.tableaus[i].some(card => !card.isFaceUp)) return;
+    }
+
+    // İki kriter de okeyse butonu göster
+    document.getElementById('btn-autocomplete').style.display = 'flex';
+}
+
+function triggerAutoComplete() {
+    autoCompleting = true;
+    document.getElementById('btn-autocomplete').style.display = 'none';
+    autoCompleteTick();
+}
+
+function autoCompleteTick() {
+    if (!autoCompleting) return;
+    if (isAnimationRunning) {
+        setTimeout(autoCompleteTick, 50);
+        return;
+    }
+
+    // Her döngüde Tableau'lardaki en alttaki (en uçtaki) kartları kontrol et
+    for (let i = 0; i < 7; i++) {
+        let pile = gameState.tableaus[i];
+        if (pile.length === 0) continue;
+
+        let card = pile[pile.length - 1];
+        
+        // Bu kart bir foundation'a gidebiliyor mu?
+        for (let f = 0; f < 4; f++) {
+            let fPile = gameState.foundations[f];
+            if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(f) === card.suit) ||
+                (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)) {
+                
+                // Kartı yuvaya uçur
+                const pileEl = document.getElementById(`t-${i}`);
+                const cardEl = pileEl.lastElementChild;
+                
+                if (cardEl) {
+                    animateCardFly(cardEl, `t-${i}`, `f-${f}`, 1);
+                    // Bir sonraki kartı uçurmak için animasyonun bitmesini (250ms) bekle
+                    setTimeout(autoCompleteTick, 220);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Eğer hiçbir tableau'dan kart taşınamadıysa ve oyun henüz bitmediyse güvence olarak durdur
+    if (!isGameWon) {
+        autoCompleting = false;
+    }
+}
+
+function checkNoMovesLeft() {
+    if (gameState.deck.length > 0) return;
+    if (gameState.waste.length > 0) {
+        let hasMoveInWaste = false;
+        for (let card of gameState.waste) {
+            if (canMoveToFoundation(card) || canMoveToTableau(card)) {
+                hasMoveInWaste = true;
+                break;
+            }
+        }
+        if (hasMoveInWaste) return;
+    }
+    for (let i = 0; i < 7; i++) {
+        let pile = gameState.tableaus[i];
+        if (pile.length === 0) continue;
+        for (let j = 0; j < pile.length; j++) {
+            let card = pile[j]; if (!card.isFaceUp) continue;
+            if (validateSubGroupSequence(`t-${i}`, j)) {
+                if (canMoveToFoundation(card) && j === pile.length - 1) return;
+                if (canMoveToTableau(card, i)) return;
+            }
+        }
+    }
+    showOverlay("Hamle Kalmadı!", "Yapacak hamlen kalmadı. Geri alabilir veya yeni bir oyuna başlayabilirsin.");
+}
+
+function canMoveToFoundation(card) {
+    for (let i = 0; i < 4; i++) {
+        let fPile = gameState.foundations[i];
+        if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(i) === card.suit) ||
+            (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)) return true;
+    }
+    return false;
+}
+
+function canMoveToTableau(card, excludeIndex = -1) {
+    for (let i = 0; i < 7; i++) {
+        if (i === excludeIndex) continue;
+        let tPile = gameState.tableaus[i];
+        if (tPile.length === 0) { if (card.rank === 13) return true; } 
+        else {
+            let targetCard = tPile[tPile.length - 1];
+            if (targetCard.color !== card.color && targetCard.rank === card.rank + 1) return true;
+        }
+    }
+    return false;
+}
+
+// KAZANMA ANIMASYONU (CANVAS)
+const winCanvas = document.getElementById('win-canvas');
+const ctx = winCanvas.getContext('2d');
+let particles = [];
+
+function checkWin() {
+    if (gameState.foundations.every(f => f.length === 13)) {
+        isGameWon = true; saveStats(true); clearInterval(timerInterval);
+        autoCompleting = false;
+        showOverlay("Tebrikler!", "Tüm kartları yuvaya dizdin! Şahane bir galibiyet.");
+        startWinAnimation();
+    }
+}
+
+function startWinAnimation() {
+    winCanvas.style.display = 'block'; winCanvas.width = window.innerWidth; winCanvas.height = window.innerHeight;
+    particles = [];
+    let cardQueue = [];
+    for(let f=0; f<4; f++) { for(let r=12; r>=0; r--) { cardQueue.push(gameState.foundations[f][r]); } }
+    let i = 0;
+    const launchInterval = setInterval(() => {
+        if (i >= cardQueue.length) { clearInterval(launchInterval); return; }
+        const fIndex = Math.floor(i / 13); const rect = document.getElementById(`f-${fIndex}`).getBoundingClientRect();
+        particles.push({
+            card: cardQueue[i], x: rect.left, y: rect.top,
+            vx: (Math.random() * 10) - 5, vy: (Math.random() * -10) - 5,
+            gravity: 0.8, bounce: 0.7
+        });
+        i++;
+    }, 150);
+    animateWin();
+}
+
+function animateWin() {
+    if (!isGameWon) return;
+    particles.forEach(p => {
+        p.vy += p.gravity; p.x += p.vx; p.y += p.vy;
+        if (p.y + 100 > winCanvas.height) { p.y = winCanvas.height - 100; p.vy *= -p.bounce; }
+        drawParticle(p);
+    });
+    requestAnimationFrame(animateWin);
+}
+
+function drawParticle(p) {
+    const w = window.innerWidth > 500 ? 100 : 60; const h = w * 1.45;
+    ctx.fillStyle = "white"; ctx.beginPath(); ctx.roundRect(p.x, p.y, w, h, 5); ctx.fill();
+    ctx.strokeStyle = "#ccc"; ctx.stroke();
+    ctx.fillStyle = p.card.color === 'red' ? '#d32f2f' : '#212121';
+    ctx.font = "bold 14px Arial"; ctx.fillText(p.card.val, p.x + 5, p.y + 15);
+    ctx.font = "20px Arial"; ctx.fillText(p.card.suit, p.x + w/2 - 10, p.y + h/2 + 5);
+}
+
+function showOverlay(title, text) {
+    document.getElementById('msg-title').innerText = title;
+    document.getElementById('msg-text').innerText = text;
+    document.getElementById('msg-overlay').style.display = 'flex';
+}
+function hideOverlay() { document.getElementById('msg-overlay').style.display = 'none'; }
+
+document.getElementById('btn-msg-close').addEventListener('click', hideOverlay);
+document.getElementById('btn-msg-new').addEventListener('click', initGame);
+document.getElementById('btn-new').addEventListener('click', initGame);
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-autocomplete').addEventListener('click', triggerAutoComplete);
+document.getElementById('btn-mute').addEventListener('click', () => {
+    isMuted = !isMuted; document.getElementById('btn-mute').innerText = isMuted ? '🔇' : '🔊';
+});
+
+initGame();
+</script>
+</body>
+</html> : 'Skor: ') + score;
+}
+function saveStats(won) {
+    appStats.played++;
+    if(won) {
+        appStats.won++;
+        if(!appStats.bestTime || timeSeconds < appStats.bestTime) appStats.bestTime = timeSeconds;
+        if(!appStats.leastMoves || movesCount < appStats.leastMoves) appStats.leastMoves = movesCount;
+        if(!appStats.bestScore || score > appStats.bestScore) appStats.bestScore = score;
+    }
+    localStorage.setItem('solitaireStats', JSON.stringify(appStats));
+}
+function checkStartTimer() {
+    if(!gameStarted) { gameStarted = true; startTimer(); }
+}
+
 function getFoundationSuit(index) { return ['♥', '♦', '♣', '♠'][index]; }
 function updateScore() { document.getElementById('score').innerText = `Hamle: ${movesCount}`; }
 
@@ -599,7 +974,391 @@ let particles = [];
 
 function checkWin() {
     if (gameState.foundations.every(f => f.length === 13)) {
-        isGameWon = true;
+        isGameWon = true; saveStats(true); clearInterval(timerInterval);
+        autoCompleting = false;
+        showOverlay("Tebrikler!", "Tüm kartları yuvaya dizdin! Şahane bir galibiyet.");
+        startWinAnimation();
+    }
+}
+
+function startWinAnimation() {
+    winCanvas.style.display = 'block'; winCanvas.width = window.innerWidth; winCanvas.height = window.innerHeight;
+    particles = [];
+    let cardQueue = [];
+    for(let f=0; f<4; f++) { for(let r=12; r>=0; r--) { cardQueue.push(gameState.foundations[f][r]); } }
+    let i = 0;
+    const launchInterval = setInterval(() => {
+        if (i >= cardQueue.length) { clearInterval(launchInterval); return; }
+        const fIndex = Math.floor(i / 13); const rect = document.getElementById(`f-${fIndex}`).getBoundingClientRect();
+        particles.push({
+            card: cardQueue[i], x: rect.left, y: rect.top,
+            vx: (Math.random() * 10) - 5, vy: (Math.random() * -10) - 5,
+            gravity: 0.8, bounce: 0.7
+        });
+        i++;
+    }, 150);
+    animateWin();
+}
+
+function animateWin() {
+    if (!isGameWon) return;
+    particles.forEach(p => {
+        p.vy += p.gravity; p.x += p.vx; p.y += p.vy;
+        if (p.y + 100 > winCanvas.height) { p.y = winCanvas.height - 100; p.vy *= -p.bounce; }
+        drawParticle(p);
+    });
+    requestAnimationFrame(animateWin);
+}
+
+function drawParticle(p) {
+    const w = window.innerWidth > 500 ? 100 : 60; const h = w * 1.45;
+    ctx.fillStyle = "white"; ctx.beginPath(); ctx.roundRect(p.x, p.y, w, h, 5); ctx.fill();
+    ctx.strokeStyle = "#ccc"; ctx.stroke();
+    ctx.fillStyle = p.card.color === 'red' ? '#d32f2f' : '#212121';
+    ctx.font = "bold 14px Arial"; ctx.fillText(p.card.val, p.x + 5, p.y + 15);
+    ctx.font = "20px Arial"; ctx.fillText(p.card.suit, p.x + w/2 - 10, p.y + h/2 + 5);
+}
+
+function showOverlay(title, text) {
+    document.getElementById('msg-title').innerText = title;
+    document.getElementById('msg-text').innerText = text;
+    document.getElementById('msg-overlay').style.display = 'flex';
+}
+function hideOverlay() { document.getElementById('msg-overlay').style.display = 'none'; }
+
+document.getElementById('btn-msg-close').addEventListener('click', hideOverlay);
+document.getElementById('btn-msg-new').addEventListener('click', initGame);
+document.getElementById('btn-new').addEventListener('click', initGame);
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-autocomplete').addEventListener('click', triggerAutoComplete);
+document.getElementById('btn-mute').addEventListener('click', () => {
+    isMuted = !isMuted; document.getElementById('btn-mute').innerText = isMuted ? '🔇' : '🔊';
+});
+
+initGame();
+</script>
+</body>
+</html> : 'Skor: ') + score;
+}
+
+// -------------------------------------------------------------------------
+// AKILLI SİSTEMLER: HAMLE BİTTİ VE OTOMATİK TAMAMLAMA KONTROLLERİ
+// -------------------------------------------------------------------------
+function checkAutoCompleteAvailability() {
+    // Kriter 1: Deste ve Waste tamamen boşalmış olmalı
+    if (gameState.deck.length > 0 || gameState.waste.length > 0) return;
+
+    // Kriter 2: Sahada (Tableau) tek bir tane bile kapalı kart kalmamış olmalı
+    for (let i = 0; i < 7; i++) {
+        if (gameState.tableaus[i].some(card => !card.isFaceUp)) return;
+    }
+
+    // İki kriter de okeyse butonu göster
+    document.getElementById('btn-autocomplete').style.display = 'flex';
+}
+
+function triggerAutoComplete() {
+    autoCompleting = true;
+    document.getElementById('btn-autocomplete').style.display = 'none';
+    autoCompleteTick();
+}
+
+function autoCompleteTick() {
+    if (!autoCompleting) return;
+    if (isAnimationRunning) {
+        setTimeout(autoCompleteTick, 50);
+        return;
+    }
+
+    // Her döngüde Tableau'lardaki en alttaki (en uçtaki) kartları kontrol et
+    for (let i = 0; i < 7; i++) {
+        let pile = gameState.tableaus[i];
+        if (pile.length === 0) continue;
+
+        let card = pile[pile.length - 1];
+        
+        // Bu kart bir foundation'a gidebiliyor mu?
+        for (let f = 0; f < 4; f++) {
+            let fPile = gameState.foundations[f];
+            if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(f) === card.suit) ||
+                (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)) {
+                
+                // Kartı yuvaya uçur
+                const pileEl = document.getElementById(`t-${i}`);
+                const cardEl = pileEl.lastElementChild;
+                
+                if (cardEl) {
+                    animateCardFly(cardEl, `t-${i}`, `f-${f}`, 1);
+                    // Bir sonraki kartı uçurmak için animasyonun bitmesini (250ms) bekle
+                    setTimeout(autoCompleteTick, 220);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Eğer hiçbir tableau'dan kart taşınamadıysa ve oyun henüz bitmediyse güvence olarak durdur
+    if (!isGameWon) {
+        autoCompleting = false;
+    }
+}
+
+function checkNoMovesLeft() {
+    if (gameState.deck.length > 0) return;
+    if (gameState.waste.length > 0) {
+        let hasMoveInWaste = false;
+        for (let card of gameState.waste) {
+            if (canMoveToFoundation(card) || canMoveToTableau(card)) {
+                hasMoveInWaste = true;
+                break;
+            }
+        }
+        if (hasMoveInWaste) return;
+    }
+    for (let i = 0; i < 7; i++) {
+        let pile = gameState.tableaus[i];
+        if (pile.length === 0) continue;
+        for (let j = 0; j < pile.length; j++) {
+            let card = pile[j]; if (!card.isFaceUp) continue;
+            if (validateSubGroupSequence(`t-${i}`, j)) {
+                if (canMoveToFoundation(card) && j === pile.length - 1) return;
+                if (canMoveToTableau(card, i)) return;
+            }
+        }
+    }
+    showOverlay("Hamle Kalmadı!", "Yapacak hamlen kalmadı. Geri alabilir veya yeni bir oyuna başlayabilirsin.");
+}
+
+function canMoveToFoundation(card) {
+    for (let i = 0; i < 4; i++) {
+        let fPile = gameState.foundations[i];
+        if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(i) === card.suit) ||
+            (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)) return true;
+    }
+    return false;
+}
+
+function canMoveToTableau(card, excludeIndex = -1) {
+    for (let i = 0; i < 7; i++) {
+        if (i === excludeIndex) continue;
+        let tPile = gameState.tableaus[i];
+        if (tPile.length === 0) { if (card.rank === 13) return true; } 
+        else {
+            let targetCard = tPile[tPile.length - 1];
+            if (targetCard.color !== card.color && targetCard.rank === card.rank + 1) return true;
+        }
+    }
+    return false;
+}
+
+// KAZANMA ANIMASYONU (CANVAS)
+const winCanvas = document.getElementById('win-canvas');
+const ctx = winCanvas.getContext('2d');
+let particles = [];
+
+function checkWin() {
+    if (gameState.foundations.every(f => f.length === 13)) {
+        isGameWon = true; saveStats(true); clearInterval(timerInterval);
+        autoCompleting = false;
+        showOverlay("Tebrikler!", "Tüm kartları yuvaya dizdin! Şahane bir galibiyet.");
+        startWinAnimation();
+    }
+}
+
+function startWinAnimation() {
+    winCanvas.style.display = 'block'; winCanvas.width = window.innerWidth; winCanvas.height = window.innerHeight;
+    particles = [];
+    let cardQueue = [];
+    for(let f=0; f<4; f++) { for(let r=12; r>=0; r--) { cardQueue.push(gameState.foundations[f][r]); } }
+    let i = 0;
+    const launchInterval = setInterval(() => {
+        if (i >= cardQueue.length) { clearInterval(launchInterval); return; }
+        const fIndex = Math.floor(i / 13); const rect = document.getElementById(`f-${fIndex}`).getBoundingClientRect();
+        particles.push({
+            card: cardQueue[i], x: rect.left, y: rect.top,
+            vx: (Math.random() * 10) - 5, vy: (Math.random() * -10) - 5,
+            gravity: 0.8, bounce: 0.7
+        });
+        i++;
+    }, 150);
+    animateWin();
+}
+
+function animateWin() {
+    if (!isGameWon) return;
+    particles.forEach(p => {
+        p.vy += p.gravity; p.x += p.vx; p.y += p.vy;
+        if (p.y + 100 > winCanvas.height) { p.y = winCanvas.height - 100; p.vy *= -p.bounce; }
+        drawParticle(p);
+    });
+    requestAnimationFrame(animateWin);
+}
+
+function drawParticle(p) {
+    const w = window.innerWidth > 500 ? 100 : 60; const h = w * 1.45;
+    ctx.fillStyle = "white"; ctx.beginPath(); ctx.roundRect(p.x, p.y, w, h, 5); ctx.fill();
+    ctx.strokeStyle = "#ccc"; ctx.stroke();
+    ctx.fillStyle = p.card.color === 'red' ? '#d32f2f' : '#212121';
+    ctx.font = "bold 14px Arial"; ctx.fillText(p.card.val, p.x + 5, p.y + 15);
+    ctx.font = "20px Arial"; ctx.fillText(p.card.suit, p.x + w/2 - 10, p.y + h/2 + 5);
+}
+
+function showOverlay(title, text) {
+    document.getElementById('msg-title').innerText = title;
+    document.getElementById('msg-text').innerText = text;
+    document.getElementById('msg-overlay').style.display = 'flex';
+}
+function hideOverlay() { document.getElementById('msg-overlay').style.display = 'none'; }
+
+document.getElementById('btn-msg-close').addEventListener('click', hideOverlay);
+document.getElementById('btn-msg-new').addEventListener('click', initGame);
+document.getElementById('btn-new').addEventListener('click', initGame);
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-autocomplete').addEventListener('click', triggerAutoComplete);
+document.getElementById('btn-mute').addEventListener('click', () => {
+    isMuted = !isMuted; document.getElementById('btn-mute').innerText = isMuted ? '🔇' : '🔊';
+});
+
+initGame();
+</script>
+</body>
+</html> : 'Skor: ') + score;
+}
+function saveStats(won) {
+    appStats.played++;
+    if(won) {
+        appStats.won++;
+        if(!appStats.bestTime || timeSeconds < appStats.bestTime) appStats.bestTime = timeSeconds;
+        if(!appStats.leastMoves || movesCount < appStats.leastMoves) appStats.leastMoves = movesCount;
+        if(!appStats.bestScore || score > appStats.bestScore) appStats.bestScore = score;
+    }
+    localStorage.setItem('solitaireStats', JSON.stringify(appStats));
+}
+function checkStartTimer() {
+    if(!gameStarted) { gameStarted = true; startTimer(); }
+}
+
+function getFoundationSuit(index) { return ['♥', '♦', '♣', '♠'][index]; }
+function updateScore() { document.getElementById('score').innerText = `Hamle: ${movesCount}`; }
+
+// -------------------------------------------------------------------------
+// AKILLI SİSTEMLER: HAMLE BİTTİ VE OTOMATİK TAMAMLAMA KONTROLLERİ
+// -------------------------------------------------------------------------
+function checkAutoCompleteAvailability() {
+    // Kriter 1: Deste ve Waste tamamen boşalmış olmalı
+    if (gameState.deck.length > 0 || gameState.waste.length > 0) return;
+
+    // Kriter 2: Sahada (Tableau) tek bir tane bile kapalı kart kalmamış olmalı
+    for (let i = 0; i < 7; i++) {
+        if (gameState.tableaus[i].some(card => !card.isFaceUp)) return;
+    }
+
+    // İki kriter de okeyse butonu göster
+    document.getElementById('btn-autocomplete').style.display = 'flex';
+}
+
+function triggerAutoComplete() {
+    autoCompleting = true;
+    document.getElementById('btn-autocomplete').style.display = 'none';
+    autoCompleteTick();
+}
+
+function autoCompleteTick() {
+    if (!autoCompleting) return;
+    if (isAnimationRunning) {
+        setTimeout(autoCompleteTick, 50);
+        return;
+    }
+
+    // Her döngüde Tableau'lardaki en alttaki (en uçtaki) kartları kontrol et
+    for (let i = 0; i < 7; i++) {
+        let pile = gameState.tableaus[i];
+        if (pile.length === 0) continue;
+
+        let card = pile[pile.length - 1];
+        
+        // Bu kart bir foundation'a gidebiliyor mu?
+        for (let f = 0; f < 4; f++) {
+            let fPile = gameState.foundations[f];
+            if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(f) === card.suit) ||
+                (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)) {
+                
+                // Kartı yuvaya uçur
+                const pileEl = document.getElementById(`t-${i}`);
+                const cardEl = pileEl.lastElementChild;
+                
+                if (cardEl) {
+                    animateCardFly(cardEl, `t-${i}`, `f-${f}`, 1);
+                    // Bir sonraki kartı uçurmak için animasyonun bitmesini (250ms) bekle
+                    setTimeout(autoCompleteTick, 220);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Eğer hiçbir tableau'dan kart taşınamadıysa ve oyun henüz bitmediyse güvence olarak durdur
+    if (!isGameWon) {
+        autoCompleting = false;
+    }
+}
+
+function checkNoMovesLeft() {
+    if (gameState.deck.length > 0) return;
+    if (gameState.waste.length > 0) {
+        let hasMoveInWaste = false;
+        for (let card of gameState.waste) {
+            if (canMoveToFoundation(card) || canMoveToTableau(card)) {
+                hasMoveInWaste = true;
+                break;
+            }
+        }
+        if (hasMoveInWaste) return;
+    }
+    for (let i = 0; i < 7; i++) {
+        let pile = gameState.tableaus[i];
+        if (pile.length === 0) continue;
+        for (let j = 0; j < pile.length; j++) {
+            let card = pile[j]; if (!card.isFaceUp) continue;
+            if (validateSubGroupSequence(`t-${i}`, j)) {
+                if (canMoveToFoundation(card) && j === pile.length - 1) return;
+                if (canMoveToTableau(card, i)) return;
+            }
+        }
+    }
+    showOverlay("Hamle Kalmadı!", "Yapacak hamlen kalmadı. Geri alabilir veya yeni bir oyuna başlayabilirsin.");
+}
+
+function canMoveToFoundation(card) {
+    for (let i = 0; i < 4; i++) {
+        let fPile = gameState.foundations[i];
+        if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(i) === card.suit) ||
+            (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)) return true;
+    }
+    return false;
+}
+
+function canMoveToTableau(card, excludeIndex = -1) {
+    for (let i = 0; i < 7; i++) {
+        if (i === excludeIndex) continue;
+        let tPile = gameState.tableaus[i];
+        if (tPile.length === 0) { if (card.rank === 13) return true; } 
+        else {
+            let targetCard = tPile[tPile.length - 1];
+            if (targetCard.color !== card.color && targetCard.rank === card.rank + 1) return true;
+        }
+    }
+    return false;
+}
+
+// KAZANMA ANIMASYONU (CANVAS)
+const winCanvas = document.getElementById('win-canvas');
+const ctx = winCanvas.getContext('2d');
+let particles = [];
+
+function checkWin() {
+    if (gameState.foundations.every(f => f.length === 13)) {
+        isGameWon = true; saveStats(true); clearInterval(timerInterval);
         autoCompleting = false;
         showOverlay("Tebrikler!", "Tüm kartları yuvaya dizdin! Şahane bir galibiyet.");
         startWinAnimation();
