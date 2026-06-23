@@ -667,7 +667,8 @@ function saveStats(won) {
 function checkStartTimer() {
     if(!gameStarted) { gameStarted = true; startTimer(); }
 }
-\nfunction getFoundationSuit(index) { return ['♥', '♦', '♣', '♠'][index]; }
+
+function getFoundationSuit(index) { return ['♥', '♦', '♣', '♠'][index]; }
 function updateScore() { 
     document.getElementById('moves').innerText = 'Hamle: ' + movesCount; 
     document.getElementById('score').innerText = (appSettings.scoring === 'vegas' ? '$' : 'Skor: ') + score;
