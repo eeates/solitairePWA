@@ -31,7 +31,7 @@
             background: rgba(0,0,0,0.3);
             color: white;
             font-weight: bold;
-            z-index: 100;
+            z-index: 1000;
         }
         button {
             background: #ffffff22;
@@ -74,7 +74,7 @@
             cursor: pointer;
             left: 0;
             top: 0;
-            transform-origin: top left;
+            touch-action: none;
         }
         .card.back {
             background: linear-gradient(135deg, #1565c0 25%, #0d47a1 100%);
@@ -86,10 +86,6 @@
         .card-suit { font-size: 1.4rem; text-align: center; align-self: center; }
         .card-value { font-size: 1rem; font-weight: bold; line-height: 1; }
         
-        /* Draggable group styles */
-        .dragging {
-            opacity: 0.5 !important;
-        }
         .flying-card {
             position: fixed;
             pointer-events: none;
@@ -107,7 +103,6 @@
     </header>
 
     <div id="game-board">
-        <!-- Üst Alan -->
         <div class="row">
             <div style="display: flex; gap: 5px;">
                 <div id="deck" class="zone"></div>
@@ -121,7 +116,6 @@
             </div>
         </div>
 
-        <!-- Çalışma Alanları (Tableau) -->
         <div class="row" style="flex: 1;">
             <div id="t-0" class="zone tableau-pile"></div>
             <div id="t-1" class="zone tableau-pile"></div>
@@ -140,9 +134,6 @@ const VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'
 let gameState = { deck: [], waste: [], foundations: [[], [], [], []], tableaus: [[], [], [], [], [], [], []] };
 let history = [];
 let movesCount = 0;
-
-// Sürükleme Takibi
-let dragData = null;
 
 function initGame() {
     movesCount = 0;
@@ -184,7 +175,6 @@ function undo() {
 }
 
 function render() {
-    // Deck render
     const deckEl = document.getElementById('deck');
     deckEl.innerHTML = '';
     if (gameState.deck.length > 0) {
@@ -195,7 +185,6 @@ function render() {
         deckEl.addEventListener('click', recycleWaste, {once: true});
     }
 
-    // Yığınları render et
     renderPile(document.getElementById('waste'), gameState.waste, false);
     for (let i = 0; i < 4; i++) {
         renderPile(document.getElementById(`f-${i}`), gameState.foundations[i], false);
@@ -213,7 +202,6 @@ function createCardEl(card) {
     }
     el.className = `card ${card.color}`;
     el.dataset.id = card.id;
-    el.draggable = true;
     el.innerHTML = `<div class="card-value">${card.val}</div><div class="card-suit">${card.suit}</div><div class="card-value" style="transform:rotate(180deg)">${card.val}</div>`;
     return el;
 }
@@ -228,53 +216,133 @@ function renderPile(pileEl, cardArray, isTableau) {
     cardArray.forEach((card, index) => {
         let cEl = createCardEl(card);
         if (isTableau) {
-            // Görseldeki üst üste binme hatasını çözen dinamik piksel aralığı
             cEl.style.top = `${index * (window.innerWidth > 500 ? 25 : 18)}px`;
         }
         
         // Çift Tıklama / Dokunma
-        cEl.addEventListener('dblclick', (e) => { e.stopPropagation(); prepareAutoMove(cEl, card, pileEl.id); });
         let lastTap = 0;
-        cEl.addEventListener('touchend', (e) => {
+        const handleDoubleTap = (e) => {
             let currentTime = new Date().getTime();
             let tapLength = currentTime - lastTap;
-            if (tapLength < 300 && tapLength > 0) {
+            if (tapLength < 250 && tapLength > 0) {
                 e.preventDefault();
                 prepareAutoMove(cEl, card, pileEl.id);
             }
             lastTap = currentTime;
-        });
+        };
+        cEl.addEventListener('dblclick', (e) => { e.stopPropagation(); prepareAutoMove(cEl, card, pileEl.id); });
+        cEl.addEventListener('touchend', handleDoubleTap);
 
-        // HTML5 Sürükle-Bırak Olayları (Grup sürükleme destekli)
+        // MOBİL VE MASAÜSTÜ İÇİN POINTER EVENTS (TOUCH/MOUSE ORTAK SÜRÜKLEME)
         if (card.isFaceUp) {
-            cEl.addEventListener('dragstart', (e) => {
-                e.stopPropagation();
-                dragData = { card, index, sourceId: pileEl.id };
-                
-                // Sürüklenen kart ve altındaki tüm kartları görsel olarak soluklaştır
-                if (isTableau) {
-                    const siblings = Array.from(pileEl.children).slice(index);
-                    siblings.forEach(el => el.classList.add('dragging'));
-                } else {
-                    cEl.classList.add('dragging');
-                }
-            });
-
-            cEl.addEventListener('dragend', () => {
-                dragData = null;
-                render();
-            });
+            setupDragAndDrop(cEl, card, index, pileEl.id);
         }
 
         pileEl.appendChild(cEl);
     });
+}
 
-    pileEl.addEventListener('dragover', e => e.preventDefault());
-    pileEl.addEventListener('drop', (e) => {
-        e.preventDefault();
-        if (!dragData) return;
-        handleDrop(dragData, pileEl.id);
+function setupDragAndDrop(cardEl, card, index, sourceId) {
+    let startX = 0, startY = 0;
+    let initialRects = [];
+    let draggedEls = [];
+    let isDragging = false;
+
+    cardEl.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        if (e.button !== 0 && e.pointerType === 'mouse') return; // Sadece sol tık
+
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+
+        const pileEl = document.getElementById(sourceId);
+        const siblings = Array.from(pileEl.children).slice(index);
+        
+        draggedEls = siblings;
+        initialRects = draggedEls.map(el => el.getBoundingClientRect());
+
+        draggedEls.forEach(el => {
+            el.style.zIndex = '5000';
+            el.style.transition = 'none';
+        });
+
+        cardEl.setPointerCapture(e.pointerId);
     });
+
+    cardEl.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        draggedEls.forEach((el, idx) => {
+            const rect = initialRects[idx];
+            // Parent element olan zone'un relative koordinatlarına göre kaydırıyoruz
+            const parentRect = el.parentElement.getBoundingClientRect();
+            const localLeft = rect.left - parentRect.left;
+            const localTop = rect.top - parentRect.top;
+
+            el.style.left = `${localLeft + dx}px`;
+            el.style.top = `${localTop + dy}px`;
+        });
+    });
+
+    cardEl.addEventListener('pointerup', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        cardEl.releasePointerCapture(e.pointerId);
+
+        // Altındaki en uygun hedef yığını bul (Drop Alanı Tespiti)
+        const targetZone = findDropZone(e.clientX, e.clientY);
+
+        if (targetZone && handleDropValidation(card, index, sourceId, targetZone.id)) {
+            // Hamle geçerliyse taşıma işlemini yap
+            executeMove(sourceId, targetZone.id, draggedEls.length);
+        } else {
+            // Geçersizse yumuşakça eski yerine geri fırlat (Snap Back)
+            draggedEls.forEach((el, idx) => {
+                el.style.transition = 'all 0.2s ease';
+                el.style.left = '0px';
+                if (sourceId.startsWith('t-')) {
+                    el.style.top = `${(index + idx) * (window.innerWidth > 500 ? 25 : 18)}px`;
+                } else {
+                    el.style.top = '0px';
+                }
+                setTimeout(() => { el.style.zIndex = ''; el.style.transition = ''; }, 200);
+            });
+        }
+    });
+}
+
+function findDropZone(x, y) {
+    const zones = document.querySelectorAll('.zone');
+    for (let zone of zones) {
+        const rect = zone.getBoundingClientRect();
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+            return zone;
+        }
+    }
+    return null;
+}
+
+function handleDropValidation(card, index, sourceId, targetId) {
+    if (sourceId === targetId) return false;
+    let sourcePile = getPileArrayById(sourceId);
+    let countToMove = sourcePile.length - index;
+
+    if (targetId.startsWith('f-')) {
+        let fIndex = parseInt(targetId.split('-')[1]);
+        let fPile = gameState.foundations[fIndex];
+        return (countToMove === 1 && ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(fIndex) === card.suit) || 
+            (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)));
+    } else if (targetId.startsWith('t-')) {
+        let tIndex = parseInt(targetId.split('-')[1]);
+        let tPile = gameState.tableaus[tIndex];
+        if (tPile.length === 0) return card.rank === 13; // Sadece Papaz boş yere
+        let targetCard = tPile[tPile.length - 1];
+        return (targetCard.color !== card.color && targetCard.rank === card.rank + 1);
+    }
+    return false;
 }
 
 function drawCard() {
@@ -301,7 +369,6 @@ function prepareAutoMove(cardEl, card, sourceId) {
     let targetId = null;
     let countToMove = 1;
 
-    // Önce Foundation kontrolü
     for (let i = 0; i < 4; i++) {
         let fPile = gameState.foundations[i];
         if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(i) === card.suit) ||
@@ -311,7 +378,6 @@ function prepareAutoMove(cardEl, card, sourceId) {
         }
     }
 
-    // Sonra Tableau kontrolü
     if (!targetId) {
         let sourcePile = getPileArrayById(sourceId);
         let cardIndex = sourcePile.findIndex(c => c.id === card.id);
@@ -350,20 +416,16 @@ function animateCardFly(cardEl, sourceId, targetId, countToMove) {
         targetTop += targetPileCount * (window.innerWidth > 500 ? 25 : 18);
     }
 
-    // Klon kart oluşturup yumuşakça kaydır
     const clone = cardEl.cloneNode(true);
     clone.className = 'card flying-card';
     if (cardEl.classList.contains('red')) clone.classList.add('red');
     if (cardEl.classList.contains('black')) clone.classList.add('black');
     
-    clone.style.top = '0px';
-    clone.style.left = '0px';
     clone.style.transform = `translate(${sourceRect.left}px, ${sourceRect.top}px)`;
     document.body.appendChild(clone);
 
     cardEl.style.opacity = '0';
 
-    // Bir sonraki frame'de animasyonu tetikle
     requestAnimationFrame(() => {
         clone.style.transform = `translate(${targetLeft}px, ${targetTop}px)`;
     });
@@ -372,41 +434,6 @@ function animateCardFly(cardEl, sourceId, targetId, countToMove) {
         clone.remove();
         executeMove(sourceId, targetId, countToMove);
     }, { once: true });
-}
-
-function handleDrop(data, targetId) {
-    let { card, index, sourceId } = data;
-    if (sourceId === targetId) return;
-
-    let sourcePile = getPileArrayById(sourceId);
-    let countToMove = sourcePile.length - index;
-    let isValid = false;
-
-    if (targetId.startsWith('f-')) {
-        let fIndex = parseInt(targetId.split('-')[1]);
-        let fPile = gameState.foundations[fIndex];
-        if (countToMove === 1 && ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(fIndex) === card.suit) || 
-            (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1))) {
-            isValid = true;
-        }
-    } else if (targetId.startsWith('t-')) {
-        let tIndex = parseInt(targetId.split('-')[1]);
-        let tPile = gameState.tableaus[tIndex];
-        if (tPile.length === 0 && card.rank === 13) {
-            isValid = true;
-        } else if (tPile.length > 0) {
-            let targetCard = tPile[tPile.length - 1];
-            if (targetCard.color !== card.color && targetCard.rank === card.rank + 1) {
-                isValid = true;
-            }
-        }
-    }
-
-    if (isValid) {
-        executeMove(sourceId, targetId, countToMove);
-    } else {
-        render();
-    }
 }
 
 function executeMove(sourceId, targetId, count) {
@@ -443,12 +470,6 @@ function checkWin() {
 
 document.getElementById('btn-new').addEventListener('click', initGame);
 document.getElementById('btn-undo').addEventListener('click', undo);
-
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
-    });
-}
 
 initGame();
 </script>
