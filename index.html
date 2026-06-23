@@ -90,7 +90,7 @@
             position: fixed;
             pointer-events: none;
             z-index: 9999 !important;
-            transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+            transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
         }
     </style>
 </head>
@@ -134,10 +134,12 @@ const VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'
 let gameState = { deck: [], waste: [], foundations: [[], [], [], []], tableaus: [[], [], [], [], [], [], []] };
 let history = [];
 let movesCount = 0;
+let isAnimationRunning = false; // Tıklama spamini engelleyen kilit (Debounce)
 
 function initGame() {
     movesCount = 0;
     history = [];
+    isAnimationRunning = false;
     updateScore();
     
     let rawDeck = [];
@@ -166,7 +168,7 @@ function saveState() {
 }
 
 function undo() {
-    if (history.length === 0) return;
+    if (history.length === 0 || isAnimationRunning) return;
     const previous = JSON.parse(history.pop());
     gameState = previous.gameState;
     movesCount = previous.movesCount;
@@ -219,9 +221,11 @@ function renderPile(pileEl, cardArray, isTableau) {
             cEl.style.top = `${index * (window.innerWidth > 500 ? 25 : 18)}px`;
         }
         
-        // Çift Tıklama / Dokunma
+        // Çift Tıklama / Dokunma Takibi
         let lastTap = 0;
         const handleDoubleTap = (e) => {
+            e.stopPropagation();
+            if (isAnimationRunning) return;
             let currentTime = new Date().getTime();
             let tapLength = currentTime - lastTap;
             if (tapLength < 250 && tapLength > 0) {
@@ -230,10 +234,13 @@ function renderPile(pileEl, cardArray, isTableau) {
             }
             lastTap = currentTime;
         };
-        cEl.addEventListener('dblclick', (e) => { e.stopPropagation(); prepareAutoMove(cEl, card, pileEl.id); });
+        
+        cEl.addEventListener('dblclick', (e) => { 
+            e.stopPropagation(); 
+            if (!isAnimationRunning) prepareAutoMove(cEl, card, pileEl.id); 
+        });
         cEl.addEventListener('touchend', handleDoubleTap);
 
-        // MOBİL VE MASAÜSTÜ İÇİN POINTER EVENTS (TOUCH/MOUSE ORTAK SÜRÜKLEME)
         if (card.isFaceUp) {
             setupDragAndDrop(cEl, card, index, pileEl.id);
         }
@@ -249,17 +256,19 @@ function setupDragAndDrop(cardEl, card, index, sourceId) {
     let isDragging = false;
 
     cardEl.addEventListener('pointerdown', (e) => {
+        if (isAnimationRunning) return;
         e.stopPropagation();
-        if (e.button !== 0 && e.pointerType === 'mouse') return; // Sadece sol tık
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+        // Taşınan grubun kendi içinde kurallı olup olmadığını EN BAŞTA denetle
+        if (!validateSubGroupSequence(sourceId, index)) return;
 
         isDragging = true;
         startX = e.clientX;
         startY = e.clientY;
 
         const pileEl = document.getElementById(sourceId);
-        const siblings = Array.from(pileEl.children).slice(index);
-        
-        draggedEls = siblings;
+        draggedEls = Array.from(pileEl.children).slice(index);
         initialRects = draggedEls.map(el => el.getBoundingClientRect());
 
         draggedEls.forEach(el => {
@@ -277,13 +286,9 @@ function setupDragAndDrop(cardEl, card, index, sourceId) {
 
         draggedEls.forEach((el, idx) => {
             const rect = initialRects[idx];
-            // Parent element olan zone'un relative koordinatlarına göre kaydırıyoruz
             const parentRect = el.parentElement.getBoundingClientRect();
-            const localLeft = rect.left - parentRect.left;
-            const localTop = rect.top - parentRect.top;
-
-            el.style.left = `${localLeft + dx}px`;
-            el.style.top = `${localTop + dy}px`;
+            el.style.left = `${(rect.left - parentRect.left) + dx}px`;
+            el.style.top = `${(rect.top - parentRect.top) + dy}px`;
         });
     });
 
@@ -292,26 +297,31 @@ function setupDragAndDrop(cardEl, card, index, sourceId) {
         isDragging = false;
         cardEl.releasePointerCapture(e.pointerId);
 
-        // Altındaki en uygun hedef yığını bul (Drop Alanı Tespiti)
         const targetZone = findDropZone(e.clientX, e.clientY);
 
         if (targetZone && handleDropValidation(card, index, sourceId, targetZone.id)) {
-            // Hamle geçerliyse taşıma işlemini yap
             executeMove(sourceId, targetZone.id, draggedEls.length);
         } else {
-            // Geçersizse yumuşakça eski yerine geri fırlat (Snap Back)
+            // Snap Back Animasyonu
             draggedEls.forEach((el, idx) => {
-                el.style.transition = 'all 0.2s ease';
+                el.style.transition = 'all 0.15s ease-out';
                 el.style.left = '0px';
-                if (sourceId.startsWith('t-')) {
-                    el.style.top = `${(index + idx) * (window.innerWidth > 500 ? 25 : 18)}px`;
-                } else {
-                    el.style.top = '0px';
-                }
-                setTimeout(() => { el.style.zIndex = ''; el.style.transition = ''; }, 200);
+                el.style.top = sourceId.startsWith('t-') ? `${(index + idx) * (window.innerWidth > 500 ? 25 : 18)}px` : '0px';
+                setTimeout(() => { el.style.zIndex = ''; el.style.transition = ''; }, 150);
             });
         }
     });
+}
+
+function validateSubGroupSequence(sourceId, startIndex) {
+    if (!sourceId.startsWith('t-')) return true;
+    let pile = gameState.tableaus[parseInt(sourceId.split('-')[1])];
+    for (let i = startIndex; i < pile.length - 1; i++) {
+        if (pile[i].color === pile[i+1].color || pile[i].rank !== pile[i+1].rank + 1) {
+            return false; // Grup sıralı değilse sürüklemeyi tamamen kilitle
+        }
+    }
+    return true;
 }
 
 function findDropZone(x, y) {
@@ -328,6 +338,10 @@ function findDropZone(x, y) {
 function handleDropValidation(card, index, sourceId, targetId) {
     if (sourceId === targetId) return false;
     let sourcePile = getPileArrayById(sourceId);
+    
+    // Güvenlik Kilidi: Çift tıklama yarışında kaybolan kart kontrolü
+    if (!sourcePile[index] || sourcePile[index].id !== card.id) return false; 
+    
     let countToMove = sourcePile.length - index;
 
     if (targetId.startsWith('f-')) {
@@ -338,7 +352,7 @@ function handleDropValidation(card, index, sourceId, targetId) {
     } else if (targetId.startsWith('t-')) {
         let tIndex = parseInt(targetId.split('-')[1]);
         let tPile = gameState.tableaus[tIndex];
-        if (tPile.length === 0) return card.rank === 13; // Sadece Papaz boş yere
+        if (tPile.length === 0) return card.rank === 13;
         let targetCard = tPile[tPile.length - 1];
         return (targetCard.color !== card.color && targetCard.rank === card.rank + 1);
     }
@@ -346,6 +360,7 @@ function handleDropValidation(card, index, sourceId, targetId) {
 }
 
 function drawCard() {
+    if (isAnimationRunning) return;
     saveState();
     let card = gameState.deck.pop();
     card.isFaceUp = true;
@@ -356,7 +371,7 @@ function drawCard() {
 }
 
 function recycleWaste() {
-    if (gameState.waste.length === 0) return;
+    if (isAnimationRunning || gameState.waste.length === 0) return;
     saveState();
     gameState.deck = [...gameState.waste].reverse().map(c => ({...c, isFaceUp: false}));
     gameState.waste = [];
@@ -366,29 +381,28 @@ function recycleWaste() {
 }
 
 function prepareAutoMove(cardEl, card, sourceId) {
-    let targetId = null;
-    let countToMove = 1;
+    let sourcePile = getPileArrayById(sourceId);
+    let cardIndex = sourcePile.findIndex(c => c.id === card.id);
+    
+    if (cardIndex === -1 || !validateSubGroupSequence(sourceId, cardIndex)) return;
+    let countToMove = sourcePile.length - cardIndex;
 
+    let targetId = null;
+
+    // Önce Ev (Foundation) Alanı Sorgusu
     for (let i = 0; i < 4; i++) {
         let fPile = gameState.foundations[i];
         if ((fPile.length === 0 && card.rank === 1 && getFoundationSuit(i) === card.suit) ||
             (fPile.length > 0 && fPile[fPile.length - 1].suit === card.suit && fPile[fPile.length - 1].rank === card.rank - 1)) {
-            targetId = `f-${i}`;
-            break;
+            if (countToMove === 1) { targetId = `f-${i}`; break; }
         }
     }
 
+    // Sonra Çalışma (Tableau) Alanı Sorgusu
     if (!targetId) {
-        let sourcePile = getPileArrayById(sourceId);
-        let cardIndex = sourcePile.findIndex(c => c.id === card.id);
-        countToMove = sourcePile.length - cardIndex;
-
         for (let i = 0; i < 7; i++) {
             let tPile = gameState.tableaus[i];
-            if (tPile.length === 0 && card.rank === 13) {
-                targetId = `t-${i}`;
-                break;
-            }
+            if (tPile.length === 0 && card.rank === 13) { targetId = `t-${i}`; break; }
             if (tPile.length > 0) {
                 let targetCard = tPile[tPile.length - 1];
                 if (targetCard.color !== card.color && targetCard.rank === card.rank + 1) {
@@ -405,6 +419,8 @@ function prepareAutoMove(cardEl, card, sourceId) {
 }
 
 function animateCardFly(cardEl, sourceId, targetId, countToMove) {
+    isAnimationRunning = true; // Komut zincirini kilitle (Spam Koruması)
+    
     const sourceRect = cardEl.getBoundingClientRect();
     const targetEl = document.getElementById(targetId);
     const targetRect = targetEl.getBoundingClientRect();
@@ -416,23 +432,33 @@ function animateCardFly(cardEl, sourceId, targetId, countToMove) {
         targetTop += targetPileCount * (window.innerWidth > 500 ? 25 : 18);
     }
 
-    const clone = cardEl.cloneNode(true);
-    clone.className = 'card flying-card';
-    if (cardEl.classList.contains('red')) clone.classList.add('red');
-    if (cardEl.classList.contains('black')) clone.classList.add('black');
-    
-    clone.style.transform = `translate(${sourceRect.left}px, ${sourceRect.top}px)`;
-    document.body.appendChild(clone);
+    // Hareket eden tüm alt kartları da klon zincirine ekle
+    const parentPile = cardEl.parentElement;
+    const cardsToAnimate = Array.from(parentPile.children).slice(Array.from(parentPile.children).indexOf(cardEl));
+    const clones = [];
 
-    cardEl.style.opacity = '0';
-
-    requestAnimationFrame(() => {
-        clone.style.transform = `translate(${targetLeft}px, ${targetTop}px)`;
+    cardsToAnimate.forEach((el, idx) => {
+        const rect = el.getBoundingClientRect();
+        const clone = el.cloneNode(true);
+        clone.className = 'card flying-card';
+        if (el.classList.contains('red')) clone.classList.add('red');
+        if (el.classList.contains('black')) clone.classList.add('black');
+        clone.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
+        document.body.appendChild(clone);
+        clones.push(clone);
+        el.style.opacity = '0';
     });
 
-    clone.addEventListener('transitionend', () => {
-        clone.remove();
+    requestAnimationFrame(() => {
+        clones.forEach((clone, idx) => {
+            clone.style.transform = `translate(${targetLeft}px, ${targetTop + (idx * (window.innerWidth > 500 ? 25 : 18))}px)`;
+        });
+    });
+
+    clones[0].addEventListener('transitionend', () => {
+        clones.forEach(c => c.remove());
         executeMove(sourceId, targetId, countToMove);
+        isAnimationRunning = false; // Kilidi aç
     }, { once: true });
 }
 
